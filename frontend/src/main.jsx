@@ -5,96 +5,114 @@ import "./styles.css";
 
 const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
+const emptyMRV = {
+  project_id: "", reporting_year: new Date().getFullYear(), biomass_tonnes_per_hectare: 10,
+  soil_carbon_tonnes_per_hectare: 50, permanence_factor: 0.9,
+  latitude: "", longitude: "", gps_accuracy_m: "", captured_at: "", evidence_hash: ""
+};
+
 function App() {
+  const [role, setRole] = useState("NGO");
   const [projects, setProjects] = useState([]);
   const [mrv, setMrv] = useState([]);
-  const [form, setForm] = useState({ name: "Demo Mangrove", ecosystem: "Mangrove", location: "Maharashtra", area_hectares: 10 });
+  const [dashboard, setDashboard] = useState({});
+  const [project, setProject] = useState({ name: "Demo Mangrove Restoration", ecosystem: "Mangrove", location: "Maharashtra Coast", area_hectares: 10, latitude: "", longitude: "", gps_accuracy_m: "", evidence_hash: "" });
+  const [mrvForm, setMrvForm] = useState(emptyMRV);
+  const [file, setFile] = useState(null);
   const [message, setMessage] = useState("");
+  const [calculation, setCalculation] = useState(null);
   const [account, setAccount] = useState("");
 
   async function refresh() {
     try {
-      const [p, m] = await Promise.all([
+      const [p, m, d] = await Promise.all([
         fetch(`${API}/api/projects`).then(r => r.json()),
-        fetch(`${API}/api/mrv`).then(r => r.json())
+        fetch(`${API}/api/mrv`).then(r => r.json()),
+        fetch(`${API}/api/dashboard`).then(r => r.json())
       ]);
-      setProjects(p);
-      setMrv(m);
-    } catch {
-      setMessage("Backend is not running. Start FastAPI on port 8000.");
-    }
+      setProjects(p); setMrv(m); setDashboard(d);
+      if (!mrvForm.project_id && p[0]) setMrvForm(x => ({ ...x, project_id: p[0].id }));
+    } catch { setMessage("Start the FastAPI backend on port 8000."); }
   }
-
   useEffect(() => { refresh(); }, []);
+
+  const setGeo = () => navigator.geolocation?.getCurrentPosition(
+    pos => setProject(x => ({ ...x, latitude: pos.coords.latitude.toFixed(6), longitude: pos.coords.longitude.toFixed(6), gps_accuracy_m: pos.coords.accuracy.toFixed(1) })),
+    () => setMessage("GPS permission was not available.")
+  );
+
+  async function hashEvidence() {
+    if (!file) return setMessage("Choose a photo/report first.");
+    const fd = new FormData(); fd.append("file", file);
+    const res = await fetch(`${API}/api/evidence/hash`, { method: "POST", body: fd });
+    const data = await res.json();
+    setProject(x => ({ ...x, evidence_hash: data.sha256 }));
+    setMrvForm(x => ({ ...x, evidence_hash: data.sha256 }));
+    setMessage(`Evidence hashed: ${data.sha256.slice(0, 18)}…`);
+  }
 
   async function registerProject(e) {
     e.preventDefault();
-    const payload = { ...form, area_hectares: Number(form.area_hectares) };
-    const res = await fetch(`${API}/api/projects`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
-    });
-    if (!res.ok) return setMessage("Project registration failed.");
-    const saved = await res.json();
-    setMessage(`Project #${saved.id} registered in the API registry.`);
-    refresh();
+    const res = await fetch(`${API}/api/projects`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...project, area_hectares: Number(project.area_hectares) }) });
+    const data = await res.json();
+    if (!res.ok) return setMessage(data.detail || "Registration failed.");
+    setMrvForm(x => ({ ...x, project_id: data.id }));
+    setMessage(`Project #${data.id} submitted for verification.`); refresh();
   }
 
-  async function registerOnChain() {
+  async function calculate() {
+    const res = await fetch(`${API}/api/mrv/calculate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...mrvForm, project_id: Number(mrvForm.project_id), reporting_year: Number(mrvForm.reporting_year), biomass_tonnes_per_hectare: Number(mrvForm.biomass_tonnes_per_hectare), soil_carbon_tonnes_per_hectare: Number(mrvForm.soil_carbon_tonnes_per_hectare), permanence_factor: Number(mrvForm.permanence_factor), latitude: mrvForm.latitude ? Number(mrvForm.latitude) : null, longitude: mrvForm.longitude ? Number(mrvForm.longitude) : null, gps_accuracy_m: mrvForm.gps_accuracy_m ? Number(mrvForm.gps_accuracy_m) : null, captured_at: mrvForm.captured_at || new Date().toISOString() }) });
+    const data = await res.json();
+    if (!res.ok) return setMessage(data.detail || "Calculation failed.");
+    setCalculation(data);
+  }
+
+  async function submitMRV() {
+    const payload = { ...mrvForm, project_id: Number(mrvForm.project_id), reporting_year: Number(mrvForm.reporting_year), biomass_tonnes_per_hectare: Number(mrvForm.biomass_tonnes_per_hectare), soil_carbon_tonnes_per_hectare: Number(mrvForm.soil_carbon_tonnes_per_hectare), permanence_factor: Number(mrvForm.permanence_factor), latitude: mrvForm.latitude ? Number(mrvForm.latitude) : null, longitude: mrvForm.longitude ? Number(mrvForm.longitude) : null, gps_accuracy_m: mrvForm.gps_accuracy_m ? Number(mrvForm.gps_accuracy_m) : null, captured_at: mrvForm.captured_at || new Date().toISOString() };
+    const res = await fetch(`${API}/api/mrv`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const data = await res.json(); if (!res.ok) return setMessage(data.detail || "MRV submission failed.");
+    setMessage(`MRV #${data.id} submitted to verifier.`); refresh();
+  }
+
+  async function review(id, decision) {
+    const comments = window.prompt(`${decision} comments`, decision === "APPROVE" ? "Evidence reviewed and accepted." : "Please correct the evidence.");
+    if (!comments) return;
+    const res = await fetch(`${API}/api/mrv/${id}/verify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ verifier: "demo-verifier", decision, comments }) });
+    const data = await res.json(); setMessage(res.ok ? `MRV #${id}: ${data.status}` : (data.detail || "Review failed")); refresh();
+  }
+
+  async function anchorProject() {
     try {
-      const { contract, account: connected } = await connectRegistry();
-      setAccount(connected);
-      const tx = await contract.registerProject(form.name, form.ecosystem, form.location, "pending-offchain-evidence");
-      setMessage(`Blockchain transaction submitted: ${tx.hash.slice(0, 14)}…`);
-      await tx.wait();
-      setMessage(`Project anchored on-chain. Tx: ${tx.hash.slice(0, 14)}…`);
-    } catch (error) {
-      setMessage(error?.shortMessage || error?.message || "Blockchain transaction failed.");
-    }
+      const { contract, account: connected } = await connectRegistry(); setAccount(connected);
+      const tx = await contract.registerProject(project.name, project.ecosystem, project.location, project.evidence_hash || "pending-evidence");
+      await tx.wait(); setMessage(`Project anchored on blockchain: ${tx.hash.slice(0, 16)}…`);
+    } catch (e) { setMessage(e?.shortMessage || e?.message || "Blockchain transaction failed."); }
   }
-
-  const totalArea = projects.reduce((sum, p) => sum + Number(p.area_hectares || 0), 0);
-  const totalIndicative = mrv.reduce((sum, x) => sum + Number(x.indicative_carbon_tonnes || x.carbon_tonnes || 0), 0);
 
   return <div className="page">
-    <header>
-      <div><span className="eyebrow">SIH25038 · CLEAN & GREEN</span><h1>BlueCarbon MRV Registry</h1><p>Evidence-first monitoring, reporting and verification for blue-carbon projects.</p></div>
-      <div className="badge">{account ? `${account.slice(0, 6)}…${account.slice(-4)}` : "Blockchain ready"}</div>
-    </header>
+    <header><div><span className="eyebrow">SIH25038 · CLEAN & GREEN</span><h1>BlueCarbon Registry</h1><p>Hybrid digital intelligence + on-ground human validation for transparent blue-carbon MRV.</p></div><div className="badge">{account ? `${account.slice(0, 6)}…${account.slice(-4)}` : "Hybrid MRV"}</div></header>
 
-    <section className="stats">
-      <div><small>Projects</small><strong>{projects.length}</strong></div>
-      <div><small>Registered area</small><strong>{totalArea.toFixed(1)} ha</strong></div>
-      <div><small>MRV records</small><strong>{mrv.length}</strong></div>
-      <div><small>Indicative carbon</small><strong>{totalIndicative.toFixed(1)} tCO₂e</strong></div>
-    </section>
+    <nav className="roles">{["NGO", "VERIFIER", "ADMIN"].map(r => <button className={role === r ? "active" : ""} onClick={() => setRole(r)} key={r}>{r}</button>)}</nav>
+
+    <section className="stats"><div><small>Projects</small><strong>{dashboard.projects ?? 0}</strong></div><div><small>Area</small><strong>{Number(dashboard.area_hectares || 0).toFixed(1)} ha</strong></div><div><small>Pending verification</small><strong>{dashboard.pending_verification ?? 0}</strong></div><div><small>Verified carbon</small><strong>{Number(dashboard.verified_carbon_tonnes || 0).toFixed(1)} tCO₂e</strong></div></section>
 
     <main>
-      <section className="card">
-        <h2>Register a project</h2>
-        <form onSubmit={registerProject}>
-          <input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="Project name" />
-          <select value={form.ecosystem} onChange={e => setForm({...form, ecosystem: e.target.value})}><option>Mangrove</option><option>Seagrass</option><option>Salt Marsh</option><option>Tidal Wetland</option></select>
-          <input value={form.location} onChange={e => setForm({...form, location: e.target.value})} placeholder="Location" />
-          <input type="number" min="0.1" step="0.1" value={form.area_hectares} onChange={e => setForm({...form, area_hectares: e.target.value})} placeholder="Area (ha)" />
-          <button type="submit">Save in registry</button>
-          <button type="button" onClick={registerOnChain}>Anchor on blockchain</button>
-        </form>
-        {message && <p className="notice">{message}</p>}
-      </section>
+      {role === "NGO" && <>
+        <section className="card"><h2>1 · Submit project evidence</h2><p className="muted">Mandatory GPS + timestamped evidence supports the PDF's data-quality safeguards.</p>
+          <form onSubmit={registerProject}><input value={project.name} onChange={e => setProject({...project,name:e.target.value})} placeholder="Project name"/><select value={project.ecosystem} onChange={e => setProject({...project,ecosystem:e.target.value})}><option>Mangrove</option><option>Seagrass</option><option>Salt Marsh</option><option>Tidal Wetland</option></select><input value={project.location} onChange={e => setProject({...project,location:e.target.value})} placeholder="Location"/><input type="number" min="0.1" step="0.1" value={project.area_hectares} onChange={e => setProject({...project,area_hectares:e.target.value})} placeholder="Area (ha)"/><div className="inline"><input value={project.latitude} onChange={e => setProject({...project,latitude:e.target.value})} placeholder="Latitude"/><input value={project.longitude} onChange={e => setProject({...project,longitude:e.target.value})} placeholder="Longitude"/><button type="button" onClick={setGeo}>Use GPS</button></div><input type="file" accept="image/*,.pdf" onChange={e => setFile(e.target.files?.[0])}/><div className="inline"><button type="button" onClick={hashEvidence}>Hash evidence</button><button type="submit">Submit project</button><button type="button" onClick={anchorProject}>Anchor on-chain</button></div></form></section>
 
-      <section className="card">
-        <h2>Registry</h2>
-        {projects.length === 0 ? <p className="muted">No projects yet.</p> : <div className="table">{projects.map(p => <div className="row" key={p.id}><span>#{p.id} <b>{p.name}</b><small>{p.ecosystem} · {p.location}</small></span><span>{p.area_hectares} ha</span><span className="status">{p.status}</span></div>)}</div>}
-      </section>
+        <section className="card"><h2>2 · Measurement & MRV</h2><div className="grid2"><select value={mrvForm.project_id} onChange={e => setMrvForm({...mrvForm,project_id:e.target.value})}>{projects.map(p => <option key={p.id} value={p.id}>#{p.id} · {p.name}</option>)}</select><input type="number" value={mrvForm.reporting_year} onChange={e => setMrvForm({...mrvForm,reporting_year:e.target.value})} placeholder="Reporting year"/><input type="number" value={mrvForm.biomass_tonnes_per_hectare} onChange={e => setMrvForm({...mrvForm,biomass_tonnes_per_hectare:e.target.value})} placeholder="Biomass t/ha"/><input type="number" value={mrvForm.soil_carbon_tonnes_per_hectare} onChange={e => setMrvForm({...mrvForm,soil_carbon_tonnes_per_hectare:e.target.value})} placeholder="Soil carbon t/ha"/><input type="number" min="0" max="1" step="0.01" value={mrvForm.permanence_factor} onChange={e => setMrvForm({...mrvForm,permanence_factor:e.target.value})} placeholder="Permanence factor"/><input value={mrvForm.evidence_hash} onChange={e => setMrvForm({...mrvForm,evidence_hash:e.target.value})} placeholder="Evidence SHA-256"/></div><div className="inline"><button onClick={calculate}>Run digital checks</button><button onClick={submitMRV}>Submit for verification</button></div>{calculation && <div className="result"><b>{calculation.indicative_carbon_tonnes} tCO₂e indicative</b><span>Digital risk: {calculation.digital_intelligence.risk}</span><span>{calculation.digital_intelligence.flags.join(" · ") || "GPS, timestamp and evidence checks passed"}</span></div>}</section>
+      </>}
 
-      <section className="card full">
-        <h2>MRV evidence trail</h2>
-        <p className="muted">Raw evidence remains off-chain. The blockchain anchors an evidence proof and verification outcome.</p>
-        {mrv.length === 0 ? <p className="muted">Submit an MRV record through the API or blockchain workflow to see it here.</p> : mrv.map(x => <div className="mrv" key={x.id}><b>MRV #{x.id}</b><span>Project {x.project_id}</span><span>{x.status}</span><span>{x.indicative_carbon_tonnes || x.carbon_tonnes} tCO₂e</span></div>)}
-      </section>
+      {role === "VERIFIER" && <section className="card full"><h2>Verifier work queue</h2><p className="muted">Review automated flags and then perform human validation before approval/rejection.</p>{mrv.filter(x => x.status === "SUBMITTED").map(x => <div className="review" key={x.id}><div><b>MRV #{x.id}</b><span>Project #{x.project_id}</span><span>{x.indicative_carbon_tonnes} tCO₂e indicative</span><span>Evidence: {x.evidence_hash ? x.evidence_hash.slice(0, 20) + "…" : "missing"}</span></div><div className="inline"><button onClick={() => review(x.id,"APPROVE")}>Approve</button><button onClick={() => review(x.id,"REJECT")}>Reject</button></div></div>)}{!mrv.some(x => x.status === "SUBMITTED") && <p className="muted">No pending submissions.</p>}</section>}
+
+      {role === "ADMIN" && <section className="card full"><h2>Admin control centre</h2><div className="result"><span>Users: NGO / Verifier / Admin</span><span>Submission notifications: {dashboard.pending_verification ?? 0} pending</span><span>Blockchain: evidence proofs + verification outcomes</span><span>Future-ready IoT: soil moisture + salinity telemetry</span></div><p className="muted">Production KYC/OTP, SMS, GIS layers and IoT gateways can be connected without changing the MRV workflow.</p></section>}
+
+      <section className="card full"><h2>Public registry & audit trail</h2>{projects.map(p => <div className="row" key={p.id}><span>#{p.id} <b>{p.name}</b><small>{p.ecosystem} · {p.location}</small></span><span>{p.area_hectares} ha</span><span className="status">{p.status}</span></div>)}</section>
+      <section className="card full"><h2>MRV history</h2>{mrv.map(x => <div className="mrv" key={x.id}><b>MRV #{x.id}</b><span>Project {x.project_id}</span><span>{x.status}</span><span>{x.indicative_carbon_tonnes} tCO₂e</span><span>{x.verification?.comments || "Awaiting verifier"}</span></div>)}</section>
     </main>
-    <footer>Prototype only · Carbon estimates require approved methodology and independent verification.</footer>
+    {message && <div className="toast">{message}</div>}
+    <footer>SIH25038 prototype · Hybrid MRV · Carbon values are illustrative until an approved methodology and independent verification are applied.</footer>
   </div>;
 }
-
 createRoot(document.getElementById("root")).render(<App />);
