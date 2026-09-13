@@ -1,55 +1,56 @@
-# SIH25038 implementation alignment
+# SIH25038 → implementation coverage
 
-This document maps the implementation to the submitted SIH idea PDF.
+This repository is explicitly structured around the six-page SIH25038 proposal. The PDF's diagrams define the product workflow, roles, technology choices, rural constraints and impact; this document tracks those items.
 
-## 1. Our Idea: submit → validate → issue
+## Page 2 — Proposed solution
 
-**PDF:** NGOs/Panchayats submit project details/evidence; Verifiers and AI validate; verified work can receive tokenized carbon units.
+- **Submit project evidence:** NGO/Panchayat web workflow + field-app workflow.
+- **Validate data:** automated digital checks for evidence hash, GPS, timestamp and GPS accuracy, plus MRV calculation support.
+- **Human validation:** verifier queue with approve/reject and comments.
+- **Issue carbon credits:** Solidity registry supports verified ERC-1155 registry units after verifier approval.
+- **Hybrid MRV:** digital intelligence and human/on-ground validation are deliberately separate decision layers.
+- **Transparent:** evidence/review hashes can be anchored on-chain.
+- **Reliable:** cross-checkable metadata and audit events.
+- **Accessible:** responsive dashboard, mobile field app, offline queue and multilingual EN/HI/MR interface.
 
-**Implementation:**
-- NGO role submits a project and evidence.
-- Evidence is SHA-256 hashed off-chain before the proof is anchored.
-- MRV calculations run through the API's digital-intelligence checks.
-- Verifier role approves/rejects submissions with comments.
-- Approved MRV records can issue ERC-1155 registry units on-chain.
+## Page 3 — Technical approach
 
-## 2. Hybrid MRV
+The PDF names Next.js/React/Tailwind, Node.js, Solidity smart contracts, Polygon/Ethereum testnet, IPFS, React Native, future soil-moisture/salinity IoT, role-based access, OTP and KYC.
 
-**PDF:** Automated digital intelligence + on-ground human validation.
+The runnable prototype implements the core web stack with **React/Vite + Node.js + Solidity/Hardhat/OpenZeppelin**, while keeping IPFS/Polygon and production KYC/SMS as deployment adapters. The field-app folder now contains a runnable Expo/React Native starter with GPS and offline sync.
 
-**Implementation:**
-- Automated checks flag missing GPS, timestamps and evidence hashes.
-- Carbon calculation is deterministic and returns an indicative quantity.
-- Human verifier remains the final approval authority.
-- Blockchain preserves the evidence/review provenance.
+Roles/actions covered:
 
-## 3. Platform roles
+1. **User registration:** user model + role selection + OTP demo API.
+2. **NGO:** create projects, upload/hash evidence, request verification, run MRV, monitor status.
+3. **Verifier:** review submissions, approve/reject with comments, queue batch verification.
+4. **Admin:** dashboard, notifications, disputes, audit records, operational integrity and role-management hooks.
 
-**PDF roles:** User registration, NGO, Verifier, Admin.
+## Page 4 — Feasibility and viability
 
-**Implementation:**
-- Web dashboard has NGO / VERIFIER / ADMIN workspaces.
-- Backend has user role model and OTP demo endpoints.
-- Verifier queue supports approve/reject + comments.
-- Admin view exposes operational status and notifications.
+Challenges represented in the PDF are addressed as follows:
 
-## 4. Evidence and rural constraints
+- Missing geotags/incomplete/fake entries → GPS, accuracy, timestamps, evidence hashing and automated checks.
+- Low rural bandwidth/large uploads → offline upload packs, metadata-first API, mobile-first design and an evidence-size limit.
+- NGO onboarding → simple forms, multilingual UI and OTP/KYC integration point.
+- Verification delays → status tracker, notifications and batch-verification queue.
+- Centralized approval complexity → explicit verifier/admin workflow plus immutable blockchain provenance for recorded outcomes.
 
-**PDF challenges/solutions:** missing geotags, incomplete/fake entries, low bandwidth, large uploads, onboarding and verification delays.
+## Page 5 — Impact and benefits
 
-**Implementation:**
-- GPS capture and GPS accuracy fields are first-class project/MRV fields.
-- Evidence receives a cryptographic SHA-256 hash.
-- Captured timestamps are stored with submissions.
-- UI is mobile-friendly and keeps evidence payloads off-chain.
-- Backend notification queue supports verifier workflow.
+The platform exposes the proposal's target groups and intended outcomes:
 
-Offline upload packs, multilingual UI, SMS OTP provider integration and production KYC are planned integration points rather than falsely represented as complete production services.
+- **NGOs/Panchayats:** streamlined submissions and transparent tracking.
+- **Verifiers/Admins:** evidence-rich review and informed decisions.
+- **Social:** community engagement/awareness pathway.
+- **Economic:** sustainable livelihoods and carbon-finance pathway.
+- **Environmental:** verified carbon sequestration and biodiversity outcomes.
+- **Integrated coastal resilience:** combines social, economic and environmental benefits.
 
-## 5. IoT readiness
+## Page 6 — research/reference basis
 
-The PDF specifies future-ready soil-moisture and salinity sensors. The data model intentionally leaves room for sensor telemetry without making hardware a dependency of the software MVP.
+The PDF lists NOAA, the Blue Carbon Initiative, Lovelock (2019), Macreadie et al. (2019), Hilmi et al. (2021), the Blue Carbon Handbook (2023), Ramsar Briefing Note No. 12, NOAA Blue Carbon Fast Facts and a Guardian seabed-carbon article. Those references are retained in the project README/reference material. fileciteturn68file1L70-L98
 
-## 6. Important scientific boundary
+## Scientific boundary
 
-This repository demonstrates a registry and MRV workflow. It does **not** claim that a blockchain transaction proves the scientific correctness of a carbon estimate. Real carbon-credit issuance requires an approved methodology, defensible measurements, uncertainty treatment, permanence/additionality assessment where applicable, and independent verification.
+The proposal is a registry/MRV solution, not a scientific certification methodology. The prototype's carbon equation is intentionally illustrative. Real credits require an approved methodology, defensible measurements, uncertainty treatment and independent verification. Blockchain proves provenance of recorded data/outcomes; it does not prove that the underlying measurement is scientifically correct.
