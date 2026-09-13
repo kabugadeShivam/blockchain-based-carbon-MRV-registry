@@ -5,10 +5,13 @@ import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 /// @title BlueCarbonRegistry
-/// @notice Prototype registry for blue-carbon restoration projects and MRV records.
-/// @dev Raw evidence stays off-chain. Only cryptographic hashes and verified outcomes are anchored on-chain.
+/// @notice SIH25038 prototype for a hybrid blue-carbon registry and MRV audit trail.
+/// @dev Raw photos, GPS payloads, reports and IoT data stay off-chain. Hashes and verification outcomes are anchored on-chain.
 contract BlueCarbonRegistry is ERC1155, AccessControl {
     bytes32 public constant VERIFIER_ROLE = keccak256("VERIFIER_ROLE");
+    bytes32 public constant NGO_ROLE = keccak256("NGO_ROLE");
+
+    enum ReviewStatus { SUBMITTED, VERIFIED, REJECTED }
 
     struct Project {
         uint256 id;
@@ -25,13 +28,14 @@ contract BlueCarbonRegistry is ERC1155, AccessControl {
         uint256 id;
         uint256 projectId;
         string evidenceHash;
+        string reviewHash;
         uint256 estimatedCredits;
         uint256 verifiedCredits;
         address submittedBy;
-        address verifiedBy;
+        address reviewedBy;
         uint256 submittedAt;
-        uint256 verifiedAt;
-        bool verified;
+        uint256 reviewedAt;
+        ReviewStatus status;
     }
 
     uint256 public nextProjectId = 1;
@@ -44,12 +48,13 @@ contract BlueCarbonRegistry is ERC1155, AccessControl {
 
     event ProjectRegistered(uint256 indexed projectId, address indexed owner, string name, string evidenceHash);
     event MRVSubmitted(uint256 indexed mrvId, uint256 indexed projectId, string evidenceHash, uint256 estimatedCredits);
-    event MRVVerified(uint256 indexed mrvId, uint256 indexed projectId, address indexed verifier, uint256 verifiedCredits);
+    event MRVReviewed(uint256 indexed mrvId, uint256 indexed projectId, address indexed verifier, bool approved, uint256 credits, string reviewHash);
     event CreditsRetired(uint256 indexed projectId, address indexed account, uint256 amount, string retirementReason);
 
     constructor() ERC1155("") {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(VERIFIER_ROLE, msg.sender);
+        _grantRole(NGO_ROLE, msg.sender);
     }
 
     function registerProject(
@@ -57,7 +62,7 @@ contract BlueCarbonRegistry is ERC1155, AccessControl {
         string calldata ecosystem,
         string calldata location,
         string calldata evidenceHash
-    ) external returns (uint256 projectId) {
+    ) external onlyRole(NGO_ROLE) returns (uint256 projectId) {
         projectId = nextProjectId++;
         projects[projectId] = Project({
             id: projectId,
@@ -87,34 +92,56 @@ contract BlueCarbonRegistry is ERC1155, AccessControl {
             id: mrvId,
             projectId: projectId,
             evidenceHash: evidenceHash,
+            reviewHash: "",
             estimatedCredits: estimatedCredits,
             verifiedCredits: 0,
             submittedBy: msg.sender,
-            verifiedBy: address(0),
+            reviewedBy: address(0),
             submittedAt: block.timestamp,
-            verifiedAt: 0,
-            verified: false
+            reviewedAt: 0,
+            status: ReviewStatus.SUBMITTED
         });
         projectMRVs[projectId].push(mrvId);
         emit MRVSubmitted(mrvId, projectId, evidenceHash, estimatedCredits);
     }
 
-    function verifyMRV(uint256 mrvId, uint256 verifiedCredits) external onlyRole(VERIFIER_ROLE) {
+    /// @notice Records an approve/reject decision and optionally issues verified registry units.
+    /// @dev The reviewHash can point to the signed verifier report stored off-chain.
+    function reviewMRV(
+        uint256 mrvId,
+        bool approved,
+        uint256 verifiedCredits,
+        string calldata reviewHash
+    ) public onlyRole(VERIFIER_ROLE) {
         MRVRecord storage record = mrvRecords[mrvId];
         require(record.id != 0, "MRV not found");
-        require(!record.verified, "Already verified");
-        require(verifiedCredits > 0 && verifiedCredits <= record.estimatedCredits, "Invalid credit amount");
+        require(record.status == ReviewStatus.SUBMITTED, "Already reviewed");
+        require(bytes(reviewHash).length > 0, "Review hash required");
 
-        record.verified = true;
-        record.verifiedCredits = verifiedCredits;
-        record.verifiedBy = msg.sender;
-        record.verifiedAt = block.timestamp;
+        record.reviewHash = reviewHash;
+        record.reviewedBy = msg.sender;
+        record.reviewedAt = block.timestamp;
 
-        uint256 projectId = record.projectId;
-        creditTokenCreated[projectId] = true;
-        _mint(projects[projectId].owner, projectId, verifiedCredits, "");
+        if (approved) {
+            require(verifiedCredits > 0 && verifiedCredits <= record.estimatedCredits, "Invalid credit amount");
+            record.status = ReviewStatus.VERIFIED;
+            record.verifiedCredits = verifiedCredits;
+            creditTokenCreated[record.projectId] = true;
+            _mint(projects[record.projectId].owner, record.projectId, verifiedCredits, "");
+        } else {
+            record.status = ReviewStatus.REJECTED;
+            record.verifiedCredits = 0;
+        }
 
-        emit MRVVerified(mrvId, projectId, msg.sender, verifiedCredits);
+        emit MRVReviewed(mrvId, record.projectId, msg.sender, approved, verifiedCredits, reviewHash);
+    }
+
+    function verifyMRV(uint256 mrvId, uint256 verifiedCredits) external onlyRole(VERIFIER_ROLE) {
+        reviewMRV(mrvId, true, verifiedCredits, "legacy-approval");
+    }
+
+    function rejectMRV(uint256 mrvId, string calldata reviewHash) external onlyRole(VERIFIER_ROLE) {
+        reviewMRV(mrvId, false, 0, reviewHash);
     }
 
     function retireCredits(uint256 projectId, uint256 amount, string calldata reason) external {
@@ -129,10 +156,12 @@ contract BlueCarbonRegistry is ERC1155, AccessControl {
     }
 
     function setVerifier(address account, bool enabled) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (enabled) {
-            _grantRole(VERIFIER_ROLE, account);
-        } else {
-            _revokeRole(VERIFIER_ROLE, account);
-        }
+        if (enabled) _grantRole(VERIFIER_ROLE, account);
+        else _revokeRole(VERIFIER_ROLE, account);
+    }
+
+    function setNGO(address account, bool enabled) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (enabled) _grantRole(NGO_ROLE, account);
+        else _revokeRole(NGO_ROLE, account);
     }
 }
