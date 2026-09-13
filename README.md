@@ -1,36 +1,51 @@
 # Blockchain-Based Blue Carbon Registry and MRV System
 
-A demonstration platform for registering blue-carbon projects, recording Measurement-Reporting-Verification (MRV) evidence, calculating indicative carbon estimates, and anchoring tamper-evident evidence proofs on a blockchain.
+**SIH25038 · Clean & Green Technology · Software**
 
-## SIH alignment
-- **Problem Statement:** SIH25038
-- **Title:** Blockchain-Based Blue Carbon Registry and MRV System
-- **Theme:** Clean & Green Technology
-- **Category:** Software
+A hybrid MRV platform inspired directly by the submitted SIH idea: NGOs/Panchayats submit evidence, automated digital intelligence checks the submission, authorized verifiers perform on-ground human validation, and blockchain preserves a tamper-evident audit trail for approved registry units.
 
-## Current MVP architecture
-- **Frontend:** React + Vite, responsive custom CSS
-- **API:** FastAPI + Python
-- **Prototype persistence:** JSON file; designed to be replaceable with PostgreSQL/PostGIS
-- **Blockchain:** Solidity 0.8.24 + Hardhat + OpenZeppelin ERC-1155/AccessControl
-- **Evidence:** off-chain files with SHA-256 proof; registry records anchor evidence hashes on-chain
-- **CI:** GitHub Actions for contract, backend and frontend checks
+## PDF idea → implementation
 
-## Core capabilities
-1. Register mangrove, seagrass, salt-marsh or tidal-wetland projects.
-2. Calculate an **indicative** carbon estimate from area, biomass, soil carbon and a permanence factor.
-3. Hash uploaded evidence using SHA-256.
-4. Submit project/MRV evidence proofs to the blockchain.
-5. Authorize verifiers and verify MRV records.
-6. Demonstrate issuance and retirement of verified registry units using ERC-1155 token IDs.
-7. Display project and MRV status in a web dashboard.
+| SIH proposal element | Project implementation |
+|---|---|
+| NGO/Panchayat submission | NGO dashboard + project/MRV submission APIs |
+| Transparent records | Blockchain evidence/review hashes |
+| Automated digital intelligence | GPS/timestamp/evidence checks + deterministic MRV calculator |
+| Human validation | Verifier work queue with approve/reject + comments |
+| Carbon issuance | ERC-1155 verified registry units in the blockchain demo |
+| Admin management | Admin control centre + notifications model |
+| GPS/timestamp evidence | Browser GPS capture + evidence hashing |
+| Low bandwidth | Mobile-first UI + offline/mobile sync blueprint |
+| Multilingual support | Language field and mobile-app integration point |
+| KYC + OTP | Backend demo endpoints; production SMS/KYC provider is an integration point |
+| Future IoT | Soil-moisture and salinity sensor adapter specification |
 
-## End-to-end workflow
+## Architecture
 
-`Project registration → baseline evidence → measurement → indicative calculation → evidence hash → MRV submission → independent verifier → blockchain verification → audit trail`
+- **Web:** React + Vite + responsive UI
+- **Backend:** Node.js + Express (matches the SIH proposal)
+- **Digital intelligence:** Python/FastAPI service for MRV calculations and validation experiments
+- **Blockchain:** Solidity 0.8.24 + Hardhat + OpenZeppelin AccessControl/ERC-1155
+- **Evidence:** off-chain files; SHA-256 proof and review hash anchored on-chain
+- **Data:** JSON demo persistence, replaceable by PostgreSQL/PostGIS
+- **Mobile:** React Native/Expo blueprint under `mobile/`
 
-## Important scope note
-This is an SIH prototype, not a carbon-credit certification system. Carbon quantities shown by the demo are illustrative unless supported by an approved methodology, appropriate field/remote-sensing data, uncertainty treatment, permanence/additionality assessment and independent verification. Blockchain provides provenance/tamper evidence; it does not prove that an input measurement or carbon factor is scientifically correct.
+## Core workflow
+
+`Register → Evidence/GPS/timestamp → Digital checks → Measure → Calculate → Submit MRV → Human verifier → Approve/Reject → Blockchain audit → Verified registry units`
+
+## Roles
+
+1. **NGO/Panchayat:** create projects, capture evidence, submit MRV.
+2. **Verifier:** review evidence, validate on-ground, approve/reject and comment.
+3. **Admin:** manage operational workflow and authorized roles.
 
 ## Local development
-See [`docs/SETUP.md`](docs/SETUP.md) for the complete Windows PowerShell setup and demo workflow.
+
+See [`docs/SETUP.md`](docs/SETUP.md).
+
+See [`docs/PDF_ALIGNMENT.md`](docs/PDF_ALIGNMENT.md) for the detailed mapping to the submitted six-page SIH proposal.
+
+## Scientific boundary
+
+This is a demonstration registry, **not a carbon-credit certification system**. The prototype's carbon calculation is illustrative. Real MRV needs an appropriate approved methodology, defensible field/remote-sensing measurements, uncertainty treatment, permanence/additionality assessment where applicable, and independent verification. Blockchain proves provenance of recorded inputs/outcomes; it does not prove that the underlying science or field measurement is correct.
