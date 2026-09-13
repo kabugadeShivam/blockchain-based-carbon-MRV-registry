@@ -1,4 +1,4 @@
-name: CI
+name: BlueCarbon MRV CI
 
 on:
   push:
@@ -15,8 +15,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm install
-      - run: npm run compile
+      - run: npm ci
       - run: npm test
 
   backend:
@@ -38,7 +37,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package.json
-      - working-directory: frontend
-        run: npm install
-      - working-directory: frontend
-        run: npm run build
+      - run: npm install
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
