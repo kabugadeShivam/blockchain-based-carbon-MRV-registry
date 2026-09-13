@@ -1,0 +1,17 @@
+{
+  "name": "blue-carbon-mrv-registry",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "node": "hardhat node",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "@openzeppelin/contracts": "^5.4.0",
+    "hardhat": "^3.0.0"
+  }
+}
